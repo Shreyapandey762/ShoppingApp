@@ -7,15 +7,15 @@ import {
   Alert,
   StyleSheet,
   Image,
-  Modal,
-  ScrollView,
   TouchableOpacity,
   TextInput,
+  Modal,
+  ScrollView,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
-import { Product } from './type';
 import Icon from 'react-native-vector-icons/FontAwesome';
+import { Product } from './type';
 
 export type RootStackParamList = {
   ProductList: undefined;
@@ -28,13 +28,39 @@ export type RootStackParamList = {
     product?: Product;
     handleAddProduct?: (newProduct: Product) => void;
   };
-  UpdateProduct: { productId: number };
 };
 
 type ProductListNavigationProp = StackNavigationProp<
   RootStackParamList,
   'ProductList'
 >;
+
+const HighlightedText = ({
+  text,
+  highlight,
+}: {
+  text: string;
+  highlight: string;
+}) => {
+  if (!highlight) return <Text>{text}</Text>;
+
+  const regex = new RegExp(`(${highlight})`, 'i');
+  const parts = text.split(regex);
+
+  return (
+    <Text>
+      {parts.map((part, index) =>
+        regex.test(part) ? (
+          <Text key={index} style={styles.highlight}>
+            {part}
+          </Text>
+        ) : (
+          part
+        )
+      )}
+    </Text>
+  );
+};
 
 const fetchProducts = async (): Promise<Product[]> => {
   const response = await fetch('https://fakestoreapi.com/products');
@@ -55,7 +81,9 @@ const ProductList = () => {
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [isFilterModalVisible, setIsFilterModalVisible] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 5;
+
   const hasFetched = useRef(false);
   const navigation = useNavigation<ProductListNavigationProp>();
 
@@ -84,6 +112,82 @@ const ProductList = () => {
     }
   };
 
+  const applyFilters = () => {
+    if (selectedCategories.length === 0) {
+      setProducts(allProducts);
+    } else {
+      const filteredProducts = allProducts.filter(product =>
+        selectedCategories.includes(product.category),
+      );
+      setProducts(filteredProducts);
+    }
+    setIsFilterModalVisible(false);
+    setCurrentPage(1); 
+  };
+
+  const handleSearch = (query: string) => {
+    setSearchQuery(query);
+  
+    if (query === '') {
+      setProducts(allProducts);
+      setCurrentPage(1); 
+      return;
+    }
+  
+    const sortedProducts = [...allProducts].sort((a, b) =>
+      a.title.localeCompare(b.title)
+    );
+  
+    const binarySearch = (array: Product[], target: string): Product[] => {
+      let left = 0;
+      let right = array.length - 1;
+      const results: Product[] = [];
+  
+      while (left <= right) {
+        const mid = Math.floor((left + right) / 2);
+        const midTitle = array[mid].title.toLowerCase();
+  
+        if (midTitle.startsWith(target)) {
+          
+          let index = mid;
+  
+          while (index >= 0 && array[index].title.toLowerCase().startsWith(target)) {
+            results.push(array[index]);
+            index--;
+          }
+  
+          index = mid + 1;
+          while (
+            index < array.length &&
+            array[index].title.toLowerCase().startsWith(target)
+          ) {
+            results.push(array[index]);
+            index++;
+          }
+  
+          break;
+        }
+  
+        if (midTitle < target) {
+          left = mid + 1;
+        } else {
+          right = mid - 1;
+        }
+      }
+  
+      return results;
+    };
+  
+    const filteredProducts = binarySearch(
+      sortedProducts,
+      query.toLowerCase()
+    );
+  
+    setProducts(filteredProducts);
+    setCurrentPage(1); 
+  };
+  
+
   const handleAddProduct = (newProduct: Product) => {
     setProducts(prev => [...prev, newProduct]);
     setAllProducts(prev => [...prev, newProduct]);
@@ -108,27 +212,20 @@ const ProductList = () => {
     Alert.alert('Product deleted successfully');
   };
 
-  const applyFilters = () => {
-    if (selectedCategories.length === 0) {
-      setProducts(allProducts);
-    } else {
-      const filteredProducts = allProducts.filter(product =>
-        selectedCategories.includes(product.category),
-      );
-      setProducts(filteredProducts);
+  const paginatedProducts = products.slice(
+    (currentPage - 1) * itemsPerPage,
+    currentPage * itemsPerPage,
+  );
+
+  const handleNextPage = () => {
+    if (currentPage * itemsPerPage < products.length) {
+      setCurrentPage(prevPage => prevPage + 1);
     }
-    setIsFilterModalVisible(false);
   };
 
-  const handleSearch = (query: string) => {
-    setSearchQuery(query);
-    if (query === '') {
-      setProducts(allProducts);
-    } else {
-      const filteredProducts = allProducts.filter(product =>
-        product.title.toLowerCase().includes(query.toLowerCase())
-      );
-      setProducts(filteredProducts);
+  const handlePreviousPage = () => {
+    if (currentPage > 1) {
+      setCurrentPage(prevPage => prevPage - 1);
     }
   };
 
@@ -140,7 +237,7 @@ const ProductList = () => {
         <TextInput
           style={styles.searchInput}
           placeholder="Search products"
-           placeholderTextColor="#888"
+          placeholderTextColor="#888"
           value={searchQuery}
           onChangeText={handleSearch}
         />
@@ -148,35 +245,89 @@ const ProductList = () => {
 
       {/* Product List */}
       <FlatList
-        data={products}
-        renderItem={({ item }: { item: Product }) => (
-          <View style={styles.productCard}>
-            <Image
-              source={{ uri: item.image }}
-              resizeMode="contain"
-              style={styles.productImage}
-            />
-            <Text style={styles.productTitle}>{item.title}</Text>
-            <Text style={styles.productPrice}>${item.price}</Text>
-            <Button
-              title="View Details"
-              onPress={() =>
-                navigation.navigate('ProductDetails', {
-                  product: item,
-                  updateProduct: handleUpdateProduct,
-                  deleteProduct: handleDeleteProduct,
-                })
-              }
-            />
-          </View>
-        )}
-        keyExtractor={item => item.id.toString()}
-        numColumns={2}
-        columnWrapperStyle={styles.row}
-        contentContainerStyle={styles.flatListContainer}
+  data={paginatedProducts}
+  renderItem={({ item }: { item: Product }) => (
+    <View style={styles.productCard}>
+      <Image
+        source={{ uri: item.image }}
+        resizeMode="contain"
+        style={styles.productImage}
       />
+      <HighlightedText text={item.title} highlight={searchQuery} />
+      <Text style={styles.productPrice}>${item.price}</Text>
+      <Button
+        title="View Details"
+        onPress={() =>
+          navigation.navigate('ProductDetails', {
+            product: item,
+            updateProduct: handleUpdateProduct,
+            deleteProduct: handleDeleteProduct,
+          })
+        }
+      />
+    </View>
+  )}
+  keyExtractor={(item) => item.id.toString()}
+  numColumns={2}
+  columnWrapperStyle={styles.row}
+  contentContainerStyle={styles.flatListContainer}
+/>
 
-      {/* Add Product & Filter Buttons */}
+
+      {/* Filter Modal */}
+      <Modal
+        visible={isFilterModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setIsFilterModalVisible(false)}>
+        <View style={styles.modalContainer}>
+          <View style={styles.modalContent}>
+            <Text style={styles.filterTitle}>Filter by Category</Text>
+            <ScrollView>
+              {categories.map(category => (
+                <TouchableOpacity
+                  key={category}
+                  style={styles.checkboxContainer}
+                  onPress={() => toggleCategorySelection(category)}>
+                  <View
+                    style={[
+                      styles.checkbox,
+                      selectedCategories.includes(category) &&
+                        styles.checkboxSelected,
+                    ]}
+                  />
+                  <Text style={styles.categoryLabel}>{category}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+            <Button title="Apply Filters" onPress={applyFilters} />
+          </View>
+        </View>
+      </Modal>
+
+      {/* Pagination Controls */}
+      <View style={styles.paginationContainer}>
+        <TouchableOpacity
+          style={[styles.paginationButton, currentPage === 1 && styles.disabledButton]}
+          onPress={handlePreviousPage}
+          disabled={currentPage === 1}>
+          <Text style={styles.paginationButtonText}>Back</Text>
+        </TouchableOpacity>
+        <Text style={styles.pageIndicator}>{`Page ${currentPage} of ${Math.ceil(
+          products.length / itemsPerPage,
+        )}`}</Text>
+        <TouchableOpacity
+          style={[
+            styles.paginationButton,
+            currentPage * itemsPerPage >= products.length && styles.disabledButton,
+          ]}
+          onPress={handleNextPage}
+          disabled={currentPage * itemsPerPage >= products.length}>
+          <Text style={styles.paginationButtonText}>Next</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Footer Buttons */}
       <View style={styles.footerButtons}>
         <TouchableOpacity
           style={styles.filterButton}
@@ -204,17 +355,26 @@ const styles = StyleSheet.create({
     padding: 16,
     backgroundColor: '#f8f8f8',
   },
-  searchBar: {
-    height: 40,
-    borderColor: '#ccc',
+  searchBarContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
     borderWidth: 1,
+    borderColor: '#ccc',
     borderRadius: 8,
+    paddingHorizontal: 8,
     marginBottom: 16,
-    paddingHorizontal: 12,
     backgroundColor: '#fff',
+    height: 40,
+  },
+  searchIcon: {
+    marginRight: 8,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 16,
   },
   flatListContainer: {
-    paddingBottom: 80, // Space for buttons
+    paddingBottom: 80,
   },
   productCard: {
     flex: 1,
@@ -225,7 +385,6 @@ const styles = StyleSheet.create({
     padding: 12,
     backgroundColor: '#fff',
     alignItems: 'center',
-    justifyContent: 'space-between',
   },
   productImage: {
     width: 100,
@@ -236,24 +395,18 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: 'bold',
     textAlign: 'center',
-    marginBottom: 4,
   },
   productPrice: {
     fontSize: 14,
     color: '#888',
     marginBottom: 8,
   },
+  highlight: {
+    backgroundColor: 'yellow', 
+    fontWeight: 'bold',
+  },
   row: {
     justifyContent: 'space-between',
-  },
-  footerButtons: {
-    position: 'absolute',
-    bottom: 20,
-    left: 20,
-    right: 20,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
   },
   filterButton: {
     backgroundColor: '#007BFF',
@@ -275,29 +428,6 @@ const styles = StyleSheet.create({
     borderRadius: 25,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 5,
-  },
-  searchBarContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#ccc',
-    borderRadius: 8,
-    paddingHorizontal: 8,
-    marginBottom: 16,
-    backgroundColor: '#fff',
-    height: 40,
-  },
-  searchIcon: {
-    marginRight: 8,
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 16,
   },
   addButtonText: {
     color: '#fff',
@@ -315,6 +445,16 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     padding: 16,
     width: '80%',
+  },
+  paginationButton: {
+    backgroundColor: '#007BFF',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+  },
+  paginationButtonText: {
+    color: '#fff',
+    fontSize: 16,
   },
   filterTitle: {
     fontSize: 18,
@@ -335,6 +475,13 @@ const styles = StyleSheet.create({
     marginRight: 8,
     borderRadius: 4,
   },
+  disabledButton: {
+    backgroundColor: '#ccc',
+  },
+  pageIndicator: {
+    fontSize: 16,
+    color: '#000',
+  },
   checkboxSelected: {
     backgroundColor: '#007BFF',
     borderColor: '#0056b3',
@@ -342,6 +489,22 @@ const styles = StyleSheet.create({
   categoryLabel: {
     fontSize: 16,
   },
+  footerButtons: {
+    position: 'absolute',
+    bottom: 80, // Adjusted to be above the pagination controls
+    left: 20,
+    right: 20,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  paginationContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    marginBottom: 16, // Added spacing to avoid overlap with footer buttons
+  },
 });
 
 export default ProductList;
+

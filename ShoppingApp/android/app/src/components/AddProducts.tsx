@@ -9,7 +9,7 @@ import {
   TouchableOpacity,
   Text,
 } from 'react-native';
-import {launchImageLibrary} from 'react-native-image-picker'; // Import image picker
+import {launchImageLibrary} from 'react-native-image-picker';
 import {addProduct} from '../utils/api';
 import {useNavigation, useRoute} from '@react-navigation/native';
 import {StackNavigationProp} from '@react-navigation/stack';
@@ -70,6 +70,7 @@ const AddProduct = ({route}: {route: any}) => {
     };
 
     if (isUpdate) {
+      // Add the API call or logic to update the product here
       Alert.alert('Product updated successfully');
       if(handleAddProduct)
         handleAddProduct(product);
